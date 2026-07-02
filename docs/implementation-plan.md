@@ -17,7 +17,8 @@ Decisions already made:
 - **Every feature is a branch + PR into `main`**, gated by CI. One feature = one PR (sub-features may split into smaller PRs).
 - **User runs all git commands** (branch, commit, push, PR merge); Claude drafts them. GitHub settings (branch protection) done by the user via drafted `gh` commands or the GitHub UI.
 - **No live external calls in CI.** SEC EDGAR, market data, and LLM APIs are tested against recorded fixtures/mocks; live integration is validated manually or via scheduled non-blocking smoke jobs.
-- **Defaults:** Python 3.12+, `uv` for env/deps, `src/` layout, `pytest`, `ruff` (lint+format), `mypy`, GitHub Actions, GCP (Cloud Run, Artifact Registry, Cloud Scheduler), Postgres + pgvector, Redis.
+- **Defaults:** Python 3.12+, `src/` layout, `pytest`, `ruff` (lint+format), `mypy`, GitHub Actions, GCP (Cloud Run, Artifact Registry, Cloud Scheduler), Postgres + pgvector, Redis.
+- **Environments:** `pyproject.toml` is the single source of truth for dependencies. Local dev uses the **`finsight` conda env** (Python 3.12, already created) with deps installed via `pip install -e ".[dev]"`. CI and Docker use **uv** for fast reproducible installs from the same `pyproject.toml` — conda never appears in containers or Actions.
 - **Zero-cost constraint:** the project must run at ~$0/month. Production Postgres+pgvector on a **Neon or Supabase free tier** (not Cloud SQL); production caching on **Upstash Redis free tier** (not Memorystore); Cloud Run scale-to-zero (min-instances=0); Artifact Registry image-cleanup policy; local docker-compose keeps real Postgres+Redis. GCP billing account required for free tier — set a $1 budget alert during 0.5.
 - **LLM strategy — model-agnostic by design, decided by our own evals:** every Layer 2 LLM call (generation, judge) goes through a thin provider-agnostic interface from the first line of code, with a fake model backend for CI. Phase 1: **Claude Haiku 4.5** (`claude-haiku-4-5`, $1/$5 per MTok; prepaid Console credits with auto-reload OFF — a structural spend cap, start with $5, realistic project total $5–20 depending on eval iterations). Phase 2: add a **Gemini free-tier** backend. Phase 3: head-to-head bake-off scored by the project's own eval harness (feature 2.5), then pick the default provider and document the decision. This doubles as a learning exercise and the first real demonstration of the eval platform. Cost controls: CI uses recorded/mocked LLM calls; tune against a small eval subset, full golden set only at checkpoints. Embeddings and BERTScore/FinBERT run locally via open-source models — no API cost.
 
@@ -26,8 +27,8 @@ Decisions already made:
 ## Layer 0 — Architecture baseline
 
 ### 0.1 Project scaffold
-Python project skeleton: `pyproject.toml` (uv), `src/finsight/` layout, pytest with a trivial passing test, ruff + mypy configured, pre-commit hooks, expanded `.gitignore`, README updated with dev setup.
-**Validate:** `uv sync && pytest && ruff check && mypy` all pass locally from a fresh clone.
+Python project skeleton: `pyproject.toml`, `src/finsight/` layout, pytest with a trivial passing test, ruff + mypy configured, pre-commit hooks, expanded `.gitignore`, README updated with dev setup (conda env activation + editable install).
+**Validate:** inside the `finsight` conda env, `pip install -e ".[dev]"` then `pytest`, `ruff check`, and `mypy` all pass from a fresh clone; the same `pyproject.toml` installs cleanly with `uv` (the CI path).
 
 ### 0.2 CI pipeline
 GitHub Actions workflow on every PR and push to `main`: lint → typecheck → tests (with coverage report). Cache uv deps for speed.
