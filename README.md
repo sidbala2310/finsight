@@ -1,73 +1,86 @@
-# FinSight — Earnings Call Intelligence API
+# FinSight — Earnings Intelligence API
 
-An end-to-end applied AI API that ingests public earnings call transcripts from [SEC EDGAR](https://www.sec.gov/edgar), runs a feature pipeline (sentiment, topic modeling, metric extraction), ranks companies by signal strength, flags anomalies, and serves results via a streaming FastAPI endpoint — deployed to Cloud Run with drift monitoring and a full CI/CD pipeline.
+An end-to-end applied AI API that ingests public company earnings communications from [SEC EDGAR](https://www.sec.gov/edgar) — 8-K earnings releases, 10-K/10-Q narrative sections, and XBRL financial facts — runs a feature pipeline (sentiment, topic modeling, metric extraction), ranks companies by signal strength, flags anomalies, and layers RAG + an agentic chat interface on top. Deployed on Cloud Run with CI/CD, drift monitoring, and an evaluation harness that will ship as a standalone open-source package (**EvalKit**).
+
+The full feature-by-feature build plan lives in [`docs/implementation-plan.md`](docs/implementation-plan.md).
+
+## Data
+
+FinSight uses SEC filings rather than earnings call transcripts (which are licensed content, not public SEC data):
+
+- **Textual** — 8-K Item 2.02 earnings press releases (EX-99 exhibits, incl. prepared remarks when furnished), 10-K/10-Q MD&A and Risk Factors sections
+- **Numerical** — standardized financial facts (revenue, EPS, margins) from EDGAR's free XBRL `companyfacts` APIs
+- **Market data** — daily prices from free sources, used only to construct the training target (forward abnormal return after a filing)
+
+The model's core hypothesis: text-derived signals (management tone, tone *change* vs the prior quarter, guidance language, risk-factor churn) carry information beyond the raw fundamentals they accompany.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              EvalKit — evaluation harness            │
-│   ML eval (offline + A/B) · LLM eval (RAGAS +        │
-│   BERTScore) · W&B Weave unified dashboard           │
-└──────────────┬───────────────────────┬───────────────┘
+┌─────────────────────────────────────────────────────────┐
+│           Layer 3 — EvalKit (evaluation harness)         │
+│   Ranking metrics · retrieval eval · RAGAS/BERTScore ·   │
+│   LLM-as-judge · W&B Weave — extracted to OSS package    │
+└──────────────┬───────────────────────┬───────────────────┘
                ▼                       ▼
-┌──────────────────────────┐ ┌──────────────────────────┐
-│   Layer 1 — Applied AI   │ │  Layer 2 — LLM intel     │
-│  Feature pipeline        │ │  RAG pipeline            │
-│  (LightGBM, anomaly      │ │  (pgvector, hybrid       │
-│   detection)             │ │   retrieval, reranker)   │
-│  Drift monitoring +      │ │  LangGraph agent         │
-│  MLflow tracking         │ │  (streaming, memory,     │
-│                          │ │   tools)                 │
-└──────────────┬───────────┘ └───────────┬──────────────┘
+┌──────────────────────────┐ ┌──────────────────────────────┐
+│   Layer 1 — Applied AI   │ │   Layer 2 — LLM intelligence │
+│  Feature pipeline        │ │  RAG pipeline (pgvector,     │
+│  (FinBERT sentiment,     │ │   hybrid retrieval, rerank)  │
+│   XBRL metrics, topics)  │ │  Provider-agnostic LLM layer │
+│  LightGBM ranking        │ │   (Claude ↔ Gemini bake-off) │
+│  Anomaly detection       │ │  LangGraph agent (streaming, │
+│  MLflow · drift monitor  │ │   memory, tools)             │
+└──────────────┬───────────┘ └───────────┬──────────────────┘
                ▲                         ▲
-┌──────────────┴─────────────────────────┴───────────────┐
-│              Shared infrastructure                     │
-│   FastAPI · Docker · Cloud Run · CI/CD · Redis caching │
-└──────────────────────────┬─────────────────────────────┘
+┌──────────────┴─────────────────────────┴───────────────────┐
+│         Layer 0 — Shared infrastructure                    │
+│  FastAPI · Docker · Cloud Run (scale-to-zero) · GitHub     │
+│  Actions CI/CD · Postgres + pgvector · Redis caching       │
+└──────────────────────────┬─────────────────────────────────┘
                            ▲
-┌──────────────────────────┴─────────────────────────────┐
-│        SEC EDGAR — public earnings transcripts         │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────┴─────────────────────────────────┐
+│   SEC EDGAR — filings (8-K, 10-K/10-Q) + XBRL facts        │
+└────────────────────────────────────────────────────────────┘
+
+  Layer 4 — light React frontend (rankings, company detail,
+  agent chat) served from the same FastAPI service
 ```
+
+Layers are **work streams, not sequential phases** — infrastructure and evaluation are built first and grow alongside the features they support, rather than being bolted on at the end.
+
+### Layer 0 — Architecture baseline
+
+Built before any feature work: FastAPI walking skeleton, Docker + docker-compose (Postgres/pgvector, Redis), GitHub Actions CI, branch-protected trunk, and continuous deployment to Cloud Run. Every feature lands as a PR gated by CI and deploys automatically on merge.
 
 ### Layer 1 — Applied AI
 
-Classic ML over transcript-derived features:
-
-- **Ingestion** — pull earnings call transcripts from SEC EDGAR (fully public, no licensing issues)
-- **Feature pipeline** — sentiment, topic modeling, and financial metric extraction
-- **Ranking** — LightGBM model scores companies by signal strength
-- **Anomaly detection** — flag unusual language or metric shifts between calls
-- **Ops** — MLflow experiment tracking, drift detection, model monitoring
+- **Ingestion** — EDGAR filings for an S&P 500 universe, rate-limit-compliant, idempotent
+- **Parsing** — clean narrative sections into a normalized corpus (shared with Layer 2)
+- **Features** — FinBERT sentiment and tone-change, XBRL fundamentals, guidance/topic signals
+- **Ranking** — LightGBM scores companies against forward abnormal returns; XGBoost and naive baselines benchmarked via MLflow
+- **Anomaly detection** — language and metric shifts vs each company's own history
+- **Ops** — MLflow tracking, scheduled pipeline runs, feature/prediction drift monitoring
 
 ### Layer 2 — LLM intelligence
 
-Retrieval and agentic Q&A over the transcript corpus:
-
-- **RAG pipeline** — pgvector storage, hybrid (dense + sparse) retrieval, reranking
-- **LangGraph agent** — streaming responses with conversation memory and tool use
+- **RAG pipeline** — section-aware chunking, pgvector, hybrid (dense + sparse) retrieval, reranking — every change gated by retrieval eval metrics
+- **Provider-agnostic LLM layer** — all generation and LLM-as-judge calls go through a pluggable interface; Claude and Gemini backends are compared head-to-head with the project's own eval harness before a default is chosen
+- **Streaming Q&A** — `POST /ask` with citations and low-confidence refusal
+- **LangGraph agent** — conversational access to retrieval, rankings, metrics, and anomalies with memory and multi-step tool use
 
 ### Layer 3 — EvalKit
 
-An evaluation harness spanning both layers, planned as a standalone open-source release:
+Evaluation is built inline from the first model (ranking metrics, golden Q&A retrieval set, RAGAS-style scoring) and later **extracted** — not invented at the end — into a standalone OSS package: unified ML + LLM eval API, W&B Weave integration, CI regression-gate templates, PyPI release.
 
-- Offline and A/B metrics for the ML models
-- RAGAS + BERTScore + LLM-as-judge for the RAG/agent stack
-- Unified dashboards via W&B Weave
+### Layer 4 — Frontend
 
-### Shared infrastructure
+A light React SPA served as static files from the FastAPI service: rankings table, company detail with links to source filings, and a streaming chat panel for the agent.
 
-FastAPI (async, streaming endpoints) · Docker · Google Cloud Run · CI/CD with automated model deployment · Redis inference caching
+## Operating cost
 
-## Roadmap
-
-| Phase | Scope | Timeline |
-|-------|-------|----------|
-| Layer 1 | EDGAR ingestion, feature pipeline, LightGBM ranking, MLflow + drift monitoring | Weeks 1–2 |
-| Layer 2 | RAG pipeline, LangGraph agent | Weeks 2–3 |
-| Layer 3 | EvalKit harness, open-source release | Weeks 4–5 |
+Designed to run at ~$0/month: Cloud Run scale-to-zero, free-tier managed Postgres (Neon/Supabase) and Redis (Upstash), free public data sources, and locally-run open-source models for embeddings and sentiment. The only paid touchpoint is metered LLM API usage during Layer 2 development, capped by prepaid credits.
 
 ## Status
 
-🚧 Early planning — architecture defined, implementation starting with Layer 1.
+🚧 Planning complete — implementation begins with Layer 0 (project scaffold + CI/CD). See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the feature-by-feature sequence and validation criteria.
