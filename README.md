@@ -2,8 +2,6 @@
 
 An end-to-end applied AI API that ingests public earnings call transcripts from [SEC EDGAR](https://www.sec.gov/edgar), runs a feature pipeline (sentiment, topic modeling, metric extraction), ranks companies by signal strength, flags anomalies, and serves results via a streaming FastAPI endpoint — deployed to Cloud Run with drift monitoring and a full CI/CD pipeline.
 
-**Who it's for:** hedge funds, research desks, and compliance teams that need structured signal from unstructured earnings calls.
-
 ## Architecture
 
 ```
