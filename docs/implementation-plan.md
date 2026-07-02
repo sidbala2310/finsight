@@ -75,31 +75,35 @@ Ranking-quality metrics before the first model exists: information coefficient (
 a) **Sentiment/tone** — finance-tuned model (e.g. FinBERT) over narrative sections; tone-change vs the company's prior filing. b) **Metric extraction** — revenue/EPS/guidance mentions via rules + patterns. c) **Topic signals** — topic model or keyword clusters over the corpus. Features materialized to a feature table keyed by (company, filing) with computation timestamps.
 **Test/validate:** unit tests on synthetic snippets with known expected outputs; feature distribution snapshot tests (alert on wild shifts when re-running over the fixture corpus); reproducibility check — same input, same features.
 
-### 1.6 Ranking model + MLflow
-LightGBM ranker/regressor on the 1.5 features against the 1.3 target. MLflow tracking for params, metrics (from the 1.4 harness), and model artifacts; model registry for the "current production model."
-**Test/validate:** gate = must beat naive baselines from 1.4 on time-split validation (document the margin honestly — financial signal is weak; a small but consistent IC is a valid result); training is a single reproducible command; MLflow run recorded per experiment.
+### 1.6 Ranking model bake-off (LightGBM vs XGBoost) + MLflow
+Train **both LightGBM and XGBoost** on the 1.5 features against the 1.3 target, alongside naive baselines (random, momentum) and a regularized-linear baseline. Every candidate is evaluated by the 1.4 harness on identical time-based CV splits with fixed seeds; all runs logged to MLflow (params, metrics, artifacts). The winner on validation metrics is registered as the production model; the comparison and decision recorded in a short doc in `docs/` with the numbers.
+**Test/validate:** gate = winner must beat the naive baselines on time-split validation (document the margin honestly — financial signal is weak; a small but consistent IC is a valid result); the bake-off is a single reproducible command (same splits, same seeds for both libraries); MLflow model registry holds the winner; decision doc committed.
 
-### 1.7 Serving endpoints + caching
+### 1.7 Feature-importance rankings via IVW meta-analysis
+Replace default GBDT importances with an **inverse-variance-weighted (IVW) meta-analysis** of per-fold importance estimates. Rationale: gain-based importance is biased toward high-cardinality/continuous features, and averaging gain across trees compounds the bias — a problem for us specifically, since the feature table mixes continuous text scores with financial ratios, and biased importances would corrupt the project's central question ("do text features add signal beyond fundamentals?"). Approach: estimate per-feature importance independently on each repeated time-split CV fold, then combine fold-level estimates with IVW so high-variance (unstable) estimates are down-weighted; report ranked features with uncertainty intervals. Sanity-check the ranking against permutation importance on held-out folds. Exact estimator details specified when the feature is picked up.
+**Test/validate:** unit tests of the IVW combiner against hand-computed weights on synthetic estimates; planted-feature test — synthetic dataset with known informative vs pure-noise features must rank the informative ones on top (including a high-cardinality noise feature that naive gain importance would incorrectly promote); stability check — rankings consistent across reruns with different seeds; importance report logged to MLflow as an artifact.
+
+### 1.8 Serving endpoints + caching
 `GET /rankings` (latest ranked universe), `GET /companies/{ticker}` (signals, features, recent filings). Batch scoring job writes predictions to DB; API reads from DB. Redis caching with sensible TTLs and cache-invalidation on new scores.
 **Test/validate:** API contract tests (schema-validated responses); cache behavior tests (second call hits cache, invalidation works); post-deploy smoke extended to hit `/rankings` in prod.
 
-### 1.8 Scheduled pipeline runs
+### 1.9 Scheduled pipeline runs
 Cloud Scheduler → Cloud Run job: periodic ingest of new filings → parse → featurize → score → refresh rankings. Failures alert (email or GitHub issue).
 **Test/validate:** trigger the job manually in prod and watch a new filing flow end-to-end into `/rankings`; simulate a failure → alert fires.
 
-### 1.9 Anomaly detection
+### 1.10 Anomaly detection
 Flag unusual filings: language shift vs the company's own history (embedding distance / tone delta), metric surprises. Exposed on the company endpoint and as `GET /anomalies`.
 **Test/validate:** injected-anomaly tests (synthetic filing with radically shifted language must flag; a near-duplicate must not); precision spot-check on a manual sample of real flagged filings.
 
-### 1.10 Drift & model monitoring
-Feature drift (PSI/KS vs training distribution), prediction drift, and score-decay tracking (rolling realized IC as labels mature), computed by a scheduled job; dashboard or report endpoint; alert thresholds. *Ordering note: land this after 1.8 so there's accumulating production history to monitor — it's the last Layer 1 feature by design.*
+### 1.11 Drift & model monitoring
+Feature drift (PSI/KS vs training distribution), prediction drift, and score-decay tracking (rolling realized IC as labels mature), computed by a scheduled job; dashboard or report endpoint; alert thresholds. *Ordering note: land this after 1.9 so there's accumulating production history to monitor — it's the last Layer 1 feature by design.*
 **Test/validate:** replay test — feed the drift job a deliberately shifted feature sample → alert triggers; unshifted sample → quiet; dashboard shows real history after a week of scheduled runs.
 
 ---
 
 ## Layer 2 — LLM intelligence (RAG → agent)
 
-*Depends on 1.2 (normalized corpus). Can start once 1.2 lands — it does not wait for Layer 1 to finish; in practice interleaves with 1.6–1.10.*
+*Depends on 1.2 (normalized corpus). Can start once 1.2 lands — it does not wait for Layer 1 to finish; in practice interleaves with 1.6–1.11.*
 
 ### 2.1 Chunking, embeddings, pgvector store
 Chunking strategy for filings (section-aware), embedding pipeline, pgvector storage with metadata filters (company, filing type, date). Backfill job over the existing corpus.
@@ -122,7 +126,7 @@ Add a Gemini free-tier backend to the provider interface alongside Claude Haiku 
 **Test/validate:** both backends pass the same provider-interface contract test suite; a reproducible eval scorecard is produced for each provider; decision documented with the numbers. This is the eval platform's first real head-to-head use — a dry run for EvalKit's "compare models-under-test" API (3.2).
 
 ### 2.6 LangGraph agent
-Conversational agent (on the bake-off-winning provider) with tools: document retrieval (2.3), rankings API (1.7), company metrics lookup, anomaly lookup (1.9). Conversation memory, streaming, multi-step tool use ("compare MSFT's last two quarters' guidance and how its ranking moved").
+Conversational agent (on the bake-off-winning provider) with tools: document retrieval (2.3), rankings API (1.8), company metrics lookup, anomaly lookup (1.10). Conversation memory, streaming, multi-step tool use ("compare MSFT's last two quarters' guidance and how its ranking moved").
 **Test/validate:** scripted multi-turn scenario tests asserting correct tool selection and argument passing (mocked tools in CI); small agent task eval set (~15 tasks) scored end-to-end for task completion; latency budget check.
 
 ### 2.7 Tracing & online evaluation
@@ -180,9 +184,9 @@ Chat panel streaming from the agent endpoint (2.6): SSE token streaming, rendere
 1. **0.1 → 0.2 → 0.3 → 0.4 → 0.5 → 0.6** (baseline; strictly sequential)
 2. **1.1 → 1.2** (corpus exists — unblocks both Layer 1 modeling and Layer 2 RAG)
 3. **1.3 → 1.4** (target + eval yardstick before any model)
-4. **1.5 → 1.6 → 1.7 → 1.8** (features → model → serving → automation)
+4. **1.5 → 1.6 → 1.7 → 1.8 → 1.9** (features → model bake-off → IVW importance → serving → automation)
 5. **2.1 → 2.2 → 2.3 → 2.4 → 2.5** (RAG track incl. provider bake-off; may interleave with step 4 after 1.2)
-6. **1.9, 1.10** (anomalies; drift — deliberately late, needs accumulated prod history)
+6. **1.10, 1.11** (anomalies; drift — deliberately late, needs accumulated prod history)
 7. **2.6 → 2.7** (agent on the winning provider, then online eval)
 8. **3.1 → 3.2 → 3.3 → 3.4 → 3.5** (EvalKit extraction & release)
 9. **4.1 → 4.2 → 4.3** (frontend — very last, once every API it consumes is stable)

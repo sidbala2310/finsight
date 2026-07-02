@@ -28,9 +28,11 @@ The model's core hypothesis: text-derived signals (management tone, tone *change
 │  Feature pipeline        │ │  RAG pipeline (pgvector,     │
 │  (FinBERT sentiment,     │ │   hybrid retrieval, rerank)  │
 │   XBRL metrics, topics)  │ │  Provider-agnostic LLM layer │
-│  LightGBM ranking        │ │   (Claude ↔ Gemini bake-off) │
-│  Anomaly detection       │ │  LangGraph agent (streaming, │
-│  MLflow · drift monitor  │ │   memory, tools)             │
+│  GBDT ranking (LightGBM  │ │   (Claude ↔ Gemini bake-off) │
+│   vs XGBoost bake-off)   │ │  LangGraph agent (streaming, │
+│  IVW feature importance  │ │   memory, tools)             │
+│  Anomaly detection       │ │                              │
+│  MLflow · drift monitor  │ │                              │
 └──────────────┬───────────┘ └───────────┬──────────────────┘
                ▲                         ▲
 ┌──────────────┴─────────────────────────┴───────────────────┐
@@ -58,7 +60,8 @@ Built before any feature work: FastAPI walking skeleton, Docker + docker-compose
 - **Ingestion** — EDGAR filings for an S&P 500 universe, rate-limit-compliant, idempotent
 - **Parsing** — clean narrative sections into a normalized corpus (shared with Layer 2)
 - **Features** — FinBERT sentiment and tone-change, XBRL fundamentals, guidance/topic signals
-- **Ranking** — LightGBM scores companies against forward abnormal returns; XGBoost and naive baselines benchmarked via MLflow
+- **Ranking** — LightGBM and XGBoost trained head-to-head against forward abnormal returns (plus naive and linear baselines) on identical time-split CV; the winner is registered as the production model via MLflow
+- **Explainability** — feature rankings via inverse-variance-weighted (IVW) meta-analysis of per-fold importance estimates, avoiding the high-cardinality and gain-averaging biases of default GBDT importances — critical for honestly answering whether text signals add value beyond fundamentals
 - **Anomaly detection** — language and metric shifts vs each company's own history
 - **Ops** — MLflow tracking, scheduled pipeline runs, feature/prediction drift monitoring
 
