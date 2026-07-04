@@ -82,6 +82,26 @@ A light React SPA served as static files from the FastAPI service: rankings tabl
 
 Designed to run at ~$0/month: Cloud Run scale-to-zero, free-tier managed Postgres (Neon/Supabase) and Redis (Upstash), free public data sources, and locally-run open-source models for embeddings and sentiment. The only paid touchpoint is metered LLM API usage during Layer 2 development, capped by prepaid credits.
 
+## Development
+
+Local development uses a [conda](https://docs.conda.io/) environment with Python 3.12:
+
+    git clone https://github.com/sidbala2310/finsight.git
+    cd finsight
+    conda create -n finsight python=3.12 -y
+    conda activate finsight
+    pip install -e ".[dev]"
+    pre-commit install
+
+Run the quality checks:
+
+    pytest                  # tests
+    ruff check .            # lint
+    ruff format --check .   # formatting
+    mypy                    # type checking
+
+The same checks run automatically on every commit (pre-commit hooks) and on every pull request (CI).
+
 ## Status
 
 🚧 **In active development.** Current focus: the shared infrastructure baseline — project scaffold, CI pipeline, containerized FastAPI skeleton, and automated deployment to Cloud Run. Up next: SEC EDGAR data ingestion and the ML ranking pipeline.

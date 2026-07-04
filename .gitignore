@@ -21,3 +21,14 @@ mlruns/
 
 # Internal planning docs (local only)
 planning/
+
+# Build artifacts
+dist/
+build/
+
+# Coverage
+.coverage
+htmlcov/
+
+# MkDocs local build
+site/
