@@ -41,3 +41,6 @@ files = ["src/finsight", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.coverage.report]
+fail_under = 90
