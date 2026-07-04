@@ -2,7 +2,7 @@
 
 An end-to-end applied AI API that ingests public company earnings communications from [SEC EDGAR](https://www.sec.gov/edgar) — 8-K earnings releases, 10-K/10-Q narrative sections, and XBRL financial facts — runs a feature pipeline (sentiment, topic modeling, metric extraction), ranks companies by signal strength, flags anomalies, and layers RAG + an agentic chat interface on top. Deployed on Cloud Run with CI/CD, drift monitoring, and an evaluation harness that will ship as a standalone open-source package (**EvalKit**).
 
-The full feature-by-feature build plan lives in [`docs/implementation-plan.md`](docs/implementation-plan.md).
+The full feature-by-feature build plan lives in [`planning/implementation-plan.md`](https://github.com/sidbala2310/finsight/blob/main/planning/implementation-plan.md).
 
 ## Data
 
@@ -86,4 +86,4 @@ Designed to run at ~$0/month: Cloud Run scale-to-zero, free-tier managed Postgre
 
 ## Status
 
-🚧 Planning complete — implementation begins with Layer 0 (project scaffold + CI/CD). See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the feature-by-feature sequence and validation criteria.
+🚧 Planning complete — implementation begins with Layer 0 (project scaffold + CI/CD). See [`planning/implementation-plan.md`](https://github.com/sidbala2310/finsight/blob/main/planning/implementation-plan.md) for the feature-by-feature sequence and validation criteria.

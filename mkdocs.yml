@@ -1,0 +1,39 @@
+site_name: FinSight
+site_description: Earnings intelligence from SEC EDGAR filings — ML signal rankings, RAG-grounded Q&A, and production MLOps.
+site_url: https://sidbala2310.github.io/finsight/
+repo_url: https://github.com/sidbala2310/finsight
+repo_name: sidbala2310/finsight
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+nav:
+  - Home: index.md

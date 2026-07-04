@@ -17,6 +17,7 @@ Decisions already made:
 - **Every feature is a branch + PR into `main`**, gated by CI. One feature = one PR (sub-features may split into smaller PRs).
 - **User runs all git commands** (branch, commit, push, PR merge); Claude drafts them. GitHub settings (branch protection) done by the user via drafted `gh` commands or the GitHub UI.
 - **No live external calls in CI.** SEC EDGAR, market data, and LLM APIs are tested against recorded fixtures/mocks; live integration is validated manually or via scheduled non-blocking smoke jobs.
+- **Documentation split:** `docs/` is strictly **user-facing** and published to GitHub Pages (MkDocs Material); `planning/` holds internal working documents (this plan, decision records) — for tracking progress and learning checkpoints, never published. The README doubles as the docs home page via snippet include (single source of truth).
 - **Defaults:** Python 3.12+, `src/` layout, `pytest`, `ruff` (lint+format), `mypy`, GitHub Actions, GCP (Cloud Run, Artifact Registry, Cloud Scheduler), Postgres + pgvector, Redis.
 - **Environments:** `pyproject.toml` is the single source of truth for dependencies. Local dev uses the **`finsight` conda env** (Python 3.12, already created) with deps installed via `pip install -e ".[dev]"`. CI and Docker use **uv** for fast reproducible installs from the same `pyproject.toml` — conda never appears in containers or Actions.
 - **Zero-cost constraint:** the project must run at ~$0/month. Production Postgres+pgvector on a **Neon or Supabase free tier** (not Cloud SQL); production caching on **Upstash Redis free tier** (not Memorystore); Cloud Run scale-to-zero (min-instances=0); Artifact Registry image-cleanup policy; local docker-compose keeps real Postgres+Redis. GCP billing account required for free tier — set a $1 budget alert during 0.5.
@@ -50,6 +51,10 @@ GCP project setup (user account/billing), Artifact Registry, Workload Identity F
 Alembic wired to the app; first migration creates the base schema. Migrations run automatically on deploy (or as a release step).
 **Validate:** migration applies cleanly on a fresh local DB and on the Cloud SQL/managed instance; migration up/down tested in CI against a Postgres service container.
 
+### 0.7 Documentation site (GitHub Pages) — *implemented early, before Layer 0 start*
+MkDocs + Material published to GitHub Pages via its own GitHub Actions workflow on merge to `main`. **User-facing content only** — home page mirrors the README via snippet include; internal planning docs (`planning/`) are never published. `mkdocstrings` gets wired in later, once user-facing functions with docstrings exist; config-file explanations and usage guides are added as the features they document land.
+**Validate:** site live at `sidbala2310.github.io/finsight`, rebuilt automatically on README/docs changes; repo About "Website" field links to it.
+
 **Layer 0 exit criterion:** a one-line code change flows branch → PR → green CI → merge → deployed to Cloud Run with zero manual steps besides PR merge.
 
 ---
@@ -66,7 +71,7 @@ HTML/text extraction from filings and exhibits: strip boilerplate, extract narra
 
 ### 1.3 Target definition & dataset construction (decision spike)
 Define what "signal strength" means before modeling: proposed target = forward N-day abnormal return (vs sector or market index) after the filing date, using a free daily-prices source (e.g. Stooq/yfinance). Build the point-in-time dataset joining documents ↔ labels. Explicit leakage rules: features may only use information available at filing time; time-based train/validation splits only.
-**Test/validate:** leakage unit tests (no feature timestamp exceeds filing timestamp); label-computation tests against hand-calculated examples; a short written decision record in `docs/` documenting the target choice and its caveats.
+**Test/validate:** leakage unit tests (no feature timestamp exceeds filing timestamp); label-computation tests against hand-calculated examples; a short written decision record in `planning/` documenting the target choice and its caveats.
 
 ### 1.4 Baseline evaluation harness *(seed of EvalKit)*
 Ranking-quality metrics before the first model exists: information coefficient (Spearman), NDCG@k, top-vs-bottom decile spread; time-based cross-validation splitter; comparison against naive baselines (random, momentum). Lives in its own module (`finsight/evaluation/`) with clean boundaries — this is deliberately the code that Layer 3 later extracts.
@@ -77,7 +82,7 @@ a) **Sentiment/tone** — finance-tuned model (e.g. FinBERT) over narrative sect
 **Test/validate:** unit tests on synthetic snippets with known expected outputs; feature distribution snapshot tests (alert on wild shifts when re-running over the fixture corpus); reproducibility check — same input, same features.
 
 ### 1.6 Ranking model bake-off (LightGBM vs XGBoost) + MLflow
-Train **both LightGBM and XGBoost** on the 1.5 features against the 1.3 target, alongside naive baselines (random, momentum) and a regularized-linear baseline. Every candidate is evaluated by the 1.4 harness on identical time-based CV splits with fixed seeds; all runs logged to MLflow (params, metrics, artifacts). The winner on validation metrics is registered as the production model; the comparison and decision recorded in a short doc in `docs/` with the numbers.
+Train **both LightGBM and XGBoost** on the 1.5 features against the 1.3 target, alongside naive baselines (random, momentum) and a regularized-linear baseline. Every candidate is evaluated by the 1.4 harness on identical time-based CV splits with fixed seeds; all runs logged to MLflow (params, metrics, artifacts). The winner on validation metrics is registered as the production model; the comparison and decision recorded in a short doc in `planning/` with the numbers.
 **Test/validate:** gate = winner must beat the naive baselines on time-split validation (document the margin honestly — financial signal is weak; a small but consistent IC is a valid result); the bake-off is a single reproducible command (same splits, same seeds for both libraries); MLflow model registry holds the winner; decision doc committed.
 
 ### 1.7 Feature-importance rankings via IVW meta-analysis
@@ -123,7 +128,7 @@ Add BM25/sparse alongside dense, fusion, then a reranker stage. Every change mea
 **Test/validate:** RAGAS-style faithfulness + answer-relevance on the golden set (LLM calls recorded/mocked in CI; full run manual or scheduled); contract tests for the streaming protocol; manual spot-check of ~20 answers for hallucinated numbers — the fatal failure mode in finance.
 
 ### 2.5 LLM provider bake-off (Claude vs Gemini)
-Add a Gemini free-tier backend to the provider interface alongside Claude Haiku 4.5. Run the identical RAG pipeline (2.4) with each provider over the golden Q&A set and score both with the eval harness: faithfulness, answer relevance, citation grounding, latency, and cost per query. Pick the default provider for the agent (2.6) from the results and record a decision doc in `docs/` with the scorecard.
+Add a Gemini free-tier backend to the provider interface alongside Claude Haiku 4.5. Run the identical RAG pipeline (2.4) with each provider over the golden Q&A set and score both with the eval harness: faithfulness, answer relevance, citation grounding, latency, and cost per query. Pick the default provider for the agent (2.6) from the results and record a decision doc in `planning/` with the scorecard.
 **Test/validate:** both backends pass the same provider-interface contract test suite; a reproducible eval scorecard is produced for each provider; decision documented with the numbers. This is the eval platform's first real head-to-head use — a dry run for EvalKit's "compare models-under-test" API (3.2).
 
 ### 2.6 LangGraph agent
@@ -178,6 +183,10 @@ Per-company page from `GET /companies/{ticker}`: signal history, extracted featu
 Chat panel streaming from the agent endpoint (2.6): SSE token streaming, rendered citations linking to source filings, conversation history within a session.
 **Test/validate:** streaming-rendering test against a mocked SSE endpoint; Playwright scenario (ask a question → streamed answer with citations appears); manual QA pass for the demo-critical flows.
 
+### 4.4 User & developer onboarding (README rewrite + docs restructure)
+Once the tool is fully usable end-to-end, rewrite the README from project overview into onboarding: quickstart for **users** (what the API/UI does, how to reach the hosted instance, example queries) and setup for **developers** (clone, conda env, editable install, docker-compose stack, running tests, contributing via PR). At the same time, the docs site restructures: the **home page keeps the current high-level project overview** (it stops mirroring the README — `docs/index.md` becomes a standalone overview page instead of a snippet include), and the **rewritten README lands as a separate "Getting Started" page** in the site nav (included from the README so the two stay in sync). Additional guide pages (configuration reference, API usage from docstrings via mkdocstrings) join the nav as needed. Until this feature, the README intentionally stays a high-level overview and the home page mirrors it.
+**Test/validate:** fresh-machine walkthrough — a new developer goes from clone to passing tests following only the README/Getting Started page; a user goes from the docs site to a successful query without reading code; docs home page still shows the project overview after the README rewrite.
+
 ---
 
 ## Implementation order (single sequence across layers)
@@ -190,7 +199,7 @@ Chat panel streaming from the agent endpoint (2.6): SSE token streaming, rendere
 6. **1.10, 1.11** (anomalies; drift — deliberately late, needs accumulated prod history)
 7. **2.6 → 2.7** (agent on the winning provider, then online eval)
 8. **3.1 → 3.2 → 3.3 → 3.4 → 3.5** (EvalKit extraction & release)
-9. **4.1 → 4.2 → 4.3** (frontend — very last, once every API it consumes is stable)
+9. **4.1 → 4.2 → 4.3 → 4.4** (frontend, then user/developer onboarding docs — very last, once every API it consumes is stable)
 
 Dependency rules worth keeping: nothing in Layer 1 modeling starts before 1.3/1.4 exist; nothing in Layer 2 retrieval gets tuned before 2.2 exists; Layer 3 never starts before its source code has real usage history.
 
