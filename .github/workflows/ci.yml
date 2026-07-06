@@ -35,3 +35,11 @@ jobs:
 
       - name: Tests
         run: uv run pytest --cov=finsight --cov-report=term-missing
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t finsight:ci .

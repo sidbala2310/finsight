@@ -102,6 +102,14 @@ Run the quality checks:
 
 The same checks run automatically on every commit (pre-commit hooks) and on every pull request (CI).
 
+Run the full local stack (API + Postgres + Redis) with [Docker](https://docs.docker.com/get-started/):
+
+    docker compose up --build
+
+The API is then available at http://localhost:8000 — try `/healthz`, `/version`,
+or the interactive docs at `/docs`. Stop with `Ctrl+C`; `docker compose down`
+removes the containers (add `-v` to also reset the database).
+
 ## Status
 
 🚧 **In active development.** Current focus: the shared infrastructure baseline — project scaffold, CI pipeline, containerized FastAPI skeleton, and automated deployment to Cloud Run. Up next: SEC EDGAR data ingestion and the ML ranking pipeline.
