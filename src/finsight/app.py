@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import asyncpg
 import redis.asyncio as redis
 from fastapi import FastAPI, Response
+from fastapi.responses import RedirectResponse
 
 import finsight
 from finsight.config import get_settings
@@ -49,6 +50,12 @@ async def _check_cache() -> bool:
 
 
 app = FastAPI(title="FinSight", version=finsight.__version__, lifespan=lifespan)
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """Placeholder until the frontend lands: send bare-URL visitors to the API docs."""
+    return RedirectResponse("/docs")
 
 
 @app.get("/version")
