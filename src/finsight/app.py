@@ -56,8 +56,8 @@ async def version() -> dict[str, str]:
     return {"version": finsight.__version__, "env": get_settings().app_env}
 
 
-@app.get("/healthz")
-async def healthz(response: Response) -> dict[str, object]:
+@app.get("/readyz")
+async def readyz(response: Response) -> dict[str, object]:
     db_ok = await _check_database()
     cache_ok = await _check_cache()
     healthy = db_ok and cache_ok

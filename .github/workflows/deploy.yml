@@ -55,6 +55,6 @@ jobs:
         run: |
           URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')
           echo "Service URL: $URL"
-          curl --fail --silent --show-error "$URL/healthz"
+          curl --fail --silent --show-error "$URL/readyz"
           echo
           curl --fail --silent --show-error "$URL/version"
