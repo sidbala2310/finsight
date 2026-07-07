@@ -106,7 +106,7 @@ Run the full local stack (API + Postgres + Redis) with [Docker](https://docs.doc
 
     docker compose up --build
 
-The API is then available at http://localhost:8000 — try `/healthz`, `/version`,
+The API is then available at http://localhost:8000 — try `/readyz`, `/version`,
 or the interactive docs at `/docs`. Stop with `Ctrl+C`; `docker compose down`
 removes the containers (add `-v` to also reset the database).
 
