@@ -110,6 +110,23 @@ The API is then available at http://localhost:8000 — try `/readyz`, `/version`
 or the interactive docs at `/docs`. Stop with `Ctrl+C`; `docker compose down`
 removes the containers (add `-v` to also reset the database).
 
+## Deployment
+
+FinSight runs on [Google Cloud Run](https://cloud.google.com/run), deployed
+continuously: every merge to `main` builds the Docker image, pushes it to
+Artifact Registry, rolls out a new revision, and smoke-tests the live service.
+The hosted API is at:
+
+**https://finsight-v2rytk7zrq-uc.a.run.app** — try [`/readyz`](https://finsight-v2rytk7zrq-uc.a.run.app/readyz),
+[`/version`](https://finsight-v2rytk7zrq-uc.a.run.app/version), or the
+interactive docs at [`/docs`](https://finsight-v2rytk7zrq-uc.a.run.app/docs).
+
+Production state lives in managed free-tier services — [Neon](https://neon.tech)
+(Postgres + pgvector) and [Upstash](https://upstash.com) (Redis) — with
+credentials held in Secret Manager. GitHub Actions authenticates to Google Cloud
+via keyless Workload Identity Federation, and the service scales to zero when
+idle, keeping the hosted footprint at ~$0/month.
+
 ## Status
 
 🚧 **In active development.** Current focus: the shared infrastructure baseline — project scaffold, CI pipeline, containerized FastAPI skeleton, and automated deployment to Cloud Run. Up next: SEC EDGAR data ingestion and the ML ranking pipeline.

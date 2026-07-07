@@ -20,6 +20,13 @@ async def _fail() -> bool:
     return False
 
 
+def test_root_redirects_to_docs() -> None:
+    with TestClient(app) as client:
+        resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/docs"
+
+
 def test_version_reports_package_version() -> None:
     with TestClient(app) as client:
         payload = client.get("/version").json()
